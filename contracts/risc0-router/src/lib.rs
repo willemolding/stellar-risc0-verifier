@@ -44,7 +44,22 @@ pub struct RiscZeroVerifierRouter;
 // Refer to the official documentation:
 // <https://developers.stellar.org/docs/build/smart-contracts/overview>.
 #[contractimpl]
-impl RiscZeroVerifierRouter {}
+impl RiscZeroVerifierRouter {
+    fn is_initialized(env: &Env) -> bool {
+        env.storage().persistent().has(&DataKey::Admin)
+    }
+
+    pub fn init(env: Env, admin: Address) -> Result<(), VerifierError> {
+        if Self::is_initialized(&env) {
+            return Err(VerifierError::AlreadyInitialized);
+        }
+
+        admin.require_auth();
+        env.storage().persistent().set(&DataKey::Admin, &admin);
+
+        Ok(())
+    }
+}
 
 impl RiscZeroVerifierInterface for RiscZeroVerifierRouter {
     type Proof = ();
