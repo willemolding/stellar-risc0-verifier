@@ -1,10 +1,18 @@
 #![no_std]
-use soroban_sdk::{Bytes, BytesN, Env, contract, contractimpl};
+use soroban_sdk::{Address, Bytes, BytesN, Env, contract, contractimpl, contracttype};
 
 use risc0_interface::{Receipt, RiscZeroVerifierInterface};
 
 #[cfg(test)]
 mod test;
+
+#[contracttype]
+#[derive(Clone)]
+enum DataKey {
+    /// Administrator address with permissions to change the router
+    Admin,
+    Verifier(BytesN<4>),
+}
 
 #[contract]
 pub struct RiscZeroVerifierRouter;
