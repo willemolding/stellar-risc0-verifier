@@ -85,6 +85,19 @@ impl RiscZeroVerifierRouter {
 
         Ok(())
     }
+
+    fn get_verifier(env: &Env, selector: &BytesN<4>) -> Result<Address, VerifierError> {
+        let verifier_address: Option<VerifierEntry> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Verifier(selector.clone()));
+
+        match verifier_address {
+            Some(VerifierEntry::Tombstone) => Err(VerifierError::SelectorRemoved),
+            Some(VerifierEntry::Active(address)) => Ok(address),
+            None => Err(VerifierError::SelectorUnknown),
+        }
+    }
 }
 
 impl RiscZeroVerifierInterface for RiscZeroVerifierRouter {
