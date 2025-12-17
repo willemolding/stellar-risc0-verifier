@@ -1,7 +1,9 @@
 #![no_std]
-use soroban_sdk::{Bytes, BytesN, Env, contract, contracterror, contractimpl, contracttype};
+use soroban_sdk::{
+    Address, Bytes, BytesN, Env, contract, contracterror, contractimpl, contracttype,
+};
 
-use risc0_interface::{Receipt, RiscZeroVerifierInterface};
+use risc0_interface::{Receipt, ReceiptClaim, RiscZeroVerifierClient, RiscZeroVerifierInterface};
 
 #[cfg(test)]
 mod test;
@@ -34,12 +36,12 @@ pub enum VerifierError {
 #[contract]
 pub struct RiscZeroVerifierRouter;
 
-// This is a sample contract. Replace this placeholder with your own contract logic.
-// A corresponding test example is available in `test.rs`.
+// This is a sample contract. Replace this placeholder with your own contract
+// logic. A corresponding test example is available in `test.rs`.
 //
 // For comprehensive examples, visit <https://github.com/stellar/soroban-examples>.
-// The repository includes use cases for the Stellar ecosystem, such as data storage on
-// the blockchain, token swaps, liquidity pools, and more.
+// The repository includes use cases for the Stellar ecosystem, such as data
+// storage on the blockchain, token swaps, liquidity pools, and more.
 //
 // Refer to the official documentation:
 // <https://developers.stellar.org/docs/build/smart-contracts/overview>.
@@ -111,15 +113,24 @@ impl RiscZeroVerifierRouter {
     }
 }
 
+#[contractimpl]
 impl RiscZeroVerifierInterface for RiscZeroVerifierRouter {
     type Proof = ();
 
     fn verify(env: Env, seal: Bytes, image_id: BytesN<32>, journal: BytesN<32>) {
-        todo!()
+        let claim = ReceiptClaim::new(&env, image_id, journal);
+        let receipt = Receipt {
+            seal,
+            claim_digest: claim.digest(&env),
+        };
+        Self::verify_integrity(env, receipt);
     }
 
     fn verify_integrity(env: Env, receipt: Receipt) {
-        todo!()
+        let selector = receipt.seal.slice(0..4).try_into().unwrap();
+        let verifier = Self::get_verifier(&env, &selector).unwrap();
+        let verifier = RiscZeroVerifierClient::new(&env, &verifier);
+        verifier.verify_integrity(&receipt);
     }
 }
 
