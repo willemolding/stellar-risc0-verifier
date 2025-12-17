@@ -98,6 +98,17 @@ impl RiscZeroVerifierRouter {
             None => Err(VerifierError::SelectorUnknown),
         }
     }
+
+    pub fn get_verifier_by_selector(
+        env: Env,
+        selector: BytesN<4>,
+    ) -> Result<Address, VerifierError> {
+        Self::get_verifier(&env, &selector)
+    }
+
+    pub fn get_verifier_from_seal(env: Env, seal: Bytes) -> Result<Address, VerifierError> {
+        Self::get_verifier(&env, &seal.slice(0..4).try_into().unwrap())
+    }
 }
 
 impl RiscZeroVerifierInterface for RiscZeroVerifierRouter {
