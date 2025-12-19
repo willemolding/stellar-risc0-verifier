@@ -2,10 +2,17 @@ use core::array;
 
 use soroban_sdk::{
     Bytes, BytesN, Env, contracttype,
-    crypto::bn254::{G1Affine, G2Affine},
+    crypto::bn254::{Bn254G1Affine as G1Affine, Bn254G2Affine as G2Affine},
 };
 
-use crate::Groth16Error;
+use risc0_interface::VerifierError;
+
+const SELECTOR_SIZE: usize = 4;
+const FIELD_ELEMENT_SIZE: usize = 32;
+const G1_SIZE: usize = FIELD_ELEMENT_SIZE * 2; // x, y
+const G2_SIZE: usize = FIELD_ELEMENT_SIZE * 4; // x_0, x_1, y_0, y_1
+const PROOF_SIZE: usize = G1_SIZE + G2_SIZE + G1_SIZE; // a, b, c
+const SEAL_SIZE: usize = SELECTOR_SIZE + PROOF_SIZE;
 
 /// Groth16 verification key for BN254 curve.
 ///
@@ -63,30 +70,25 @@ pub struct Groth16Proof {
     pub c: G1Affine,
 }
 
+#[derive(Clone)]
+#[contracttype]
 pub struct Groth16Seal {
     pub selector: BytesN<4>,
     pub proof: Groth16Proof,
 }
 
-const SELECTOR_SIZE: usize = 4;
-const FIELD_ELEMENT_SIZE: usize = 32;
-const G1_SIZE: usize = FIELD_ELEMENT_SIZE * 2; // x, y
-const G2_SIZE: usize = FIELD_ELEMENT_SIZE * 4; // x_0, x_1, y_0, y_1
-const PROOF_SIZE: usize = G1_SIZE + G2_SIZE + G1_SIZE; // a, b, c
-const SEAL_SIZE: usize = SELECTOR_SIZE + PROOF_SIZE;
-
 impl TryFrom<Bytes> for Groth16Seal {
-    type Error = Groth16Error;
+    type Error = VerifierError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         if value.len() != SEAL_SIZE as u32 {
-            return Err(Groth16Error::MalformedSeal);
+            return Err(VerifierError::MalformedSeal);
         }
 
         let selector = value
             .slice(0..SELECTOR_SIZE as u32)
             .try_into()
-            .map_err(|_| Groth16Error::MalformedSeal)?;
+            .map_err(|_| VerifierError::MalformedSeal)?;
 
         let proof = value.slice(SELECTOR_SIZE as u32..).try_into()?;
 
@@ -95,16 +97,31 @@ impl TryFrom<Bytes> for Groth16Seal {
 }
 
 impl TryFrom<Bytes> for Groth16Proof {
-    type Error = Groth16Error;
+    type Error = VerifierError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         if value.len() != PROOF_SIZE as u32 {
-            return Err(Groth16Error::MalformedSeal);
+            return Err(VerifierError::MalformedSeal);
         }
 
-        let a = G1Affine::from_bytes(value.slice(0..64).try_into().unwrap());
-        let b = G2Affine::from_bytes(value.slice(64..192).try_into().unwrap());
-        let c = G1Affine::from_bytes(value.slice(192..).try_into().unwrap());
+        let a = G1Affine::from_bytes(
+            value
+                .slice(0..G1_SIZE as u32)
+                .try_into()
+                .map_err(|_| VerifierError::MalformedSeal)?,
+        );
+        let b = G2Affine::from_bytes(
+            value
+                .slice(G1_SIZE as u32..G1_SIZE as u32 + G2_SIZE as u32)
+                .try_into()
+                .map_err(|_| VerifierError::MalformedSeal)?,
+        );
+        let c = G1Affine::from_bytes(
+            value
+                .slice(G1_SIZE as u32 + G2_SIZE as u32..)
+                .try_into()
+                .map_err(|_| VerifierError::MalformedSeal)?,
+        );
 
         Ok(Self { a, b, c })
     }

@@ -1,11 +1,8 @@
 #![no_std]
 
-// Use Soroban's allocator for heap allocations
-extern crate alloc;
-
-use risc0_interface::{Receipt, ReceiptClaim, RiscZeroVerifierInterface};
+use risc0_interface::{Receipt, ReceiptClaim, RiscZeroVerifierInterface, VerifierError};
 use soroban_sdk::{
-    Bytes, BytesN, Env, String, Vec, contract, contracterror, contractimpl, crypto::bn254::Fr, vec,
+    Bytes, BytesN, Env, String, Vec, contract, contractimpl, crypto::bn254::Fr, vec,
 };
 
 use types::{Groth16Proof, Groth16Seal, VerificationKeyBytes};
@@ -13,19 +10,6 @@ use types::{Groth16Proof, Groth16Seal, VerificationKeyBytes};
 #[cfg(test)]
 mod test;
 mod types;
-
-/// Errors that can occur during Groth16 proof verification.
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum Groth16Error {
-    /// The proof verification failed (pairing check did not equal identity).
-    InvalidProof = 0,
-    /// The number of public inputs does not match the verification key.
-    MalformedPublicInputs = 1,
-    /// The seal data is malformed or has incorrect byte length.
-    MalformedSeal = 2,
-}
 
 /// Groth16 verifier contract for RISC Zero receipts of execution.
 ///
@@ -49,13 +33,13 @@ impl RiscZeroGroth16Verifier {
     const SELECTOR: [u8; 4] = include!(concat!(env!("OUT_DIR"), "/selector.rs"));
 
     /// Returns the verifier's selector
-    pub fn selector() -> BytesN<4> {
-        BytesN::from_array(&Env::default(), &Self::SELECTOR)
+    pub fn selector(env: Env) -> BytesN<4> {
+        BytesN::from_array(&env, &Self::SELECTOR)
     }
 
     /// Returns the RISC Zero verifier version
-    pub fn version() -> String {
-        String::from_str(&Env::default(), Self::VERSION)
+    pub fn version(env: Env) -> String {
+        String::from_str(&env, Self::VERSION)
     }
 
     /// Verifies a Groth16 proof with the given public signals.
@@ -77,15 +61,15 @@ impl RiscZeroGroth16Verifier {
         env: Env,
         proof: Groth16Proof,
         pub_signals: Vec<Fr>,
-    ) -> Result<bool, Groth16Error> {
+    ) -> Result<bool, VerifierError> {
         let vk = Self::VERIFICATION_KEY.verification_key(&env);
         let bn = env.crypto().bn254();
 
         if pub_signals.len() + 1 != vk.ic.len() as u32 {
-            return Err(Groth16Error::MalformedPublicInputs);
+            return Err(VerifierError::MalformedPublicInputs);
         }
 
-        let mut vk_x = vk.ic.first().unwrap().clone();
+        let mut vk_x = vk.ic[0].clone();
         for (s, v) in pub_signals.iter().zip(vk.ic.iter().skip(1)) {
             let prod = bn.g1_mul(v, &s);
             vk_x = bn.g1_add(&vk_x, &prod);
@@ -103,22 +87,27 @@ impl RiscZeroGroth16Verifier {
 
 #[contractimpl]
 impl RiscZeroVerifierInterface for RiscZeroGroth16Verifier {
-    type Proof = Groth16Proof;
+    type Proof = Groth16Seal;
 
-    fn verify(env: Env, seal: Bytes, image_id: BytesN<32>, journal: BytesN<32>) {
+    fn verify(
+        env: Env,
+        seal: Bytes,
+        image_id: BytesN<32>,
+        journal: BytesN<32>,
+    ) -> Result<(), VerifierError> {
         let claim = ReceiptClaim::new(&env, image_id, journal);
         let receipt = Receipt {
             seal,
             claim_digest: claim.digest(&env),
         };
-        Self::verify_integrity(env, receipt);
+        Self::verify_integrity(env, receipt)
     }
 
-    fn verify_integrity(env: Env, receipt: Receipt) {
-        let seal = Groth16Seal::try_from(receipt.seal).unwrap();
+    fn verify_integrity(env: Env, receipt: Receipt) -> Result<(), VerifierError> {
+        let seal = Self::Proof::try_from(receipt.seal)?;
 
         if seal.selector != Self::SELECTOR {
-            panic!("bad selector"); // TODO: Add missing error
+            return Err(VerifierError::InvalidSelector);
         }
 
         let (claim_0, claim_1) = split_digest(&env, receipt.claim_digest);
@@ -147,10 +136,9 @@ impl RiscZeroVerifierInterface for RiscZeroGroth16Verifier {
         pub_signals.push_back(Fr::from_bytes(bn254_control_id));
 
         // Verify the proof and panic if invalid
-        match Self::verify_proof(env, seal.proof, pub_signals) {
-            Ok(true) => {} // Proof is valid
-            Ok(false) => panic!("Proof verification failed"),
-            Err(e) => panic!("Proof verification error: {:?}", e),
+        match Self::verify_proof(env, seal.proof, pub_signals)? {
+            true => Ok(()),
+            false => Err(VerifierError::InvalidProof),
         }
     }
 }
