@@ -31,6 +31,10 @@ pub enum VerifierError {
     MalformedSeal = 2,
     /// The selector in the seal does not match this verifier.
     InvalidSelector = 3,
+    AlreadyInitialized = 4,
+    SelectorRemoved = 5,
+    SelectorInUse = 6,
+    SelectorUnknown = 7,
 }
 
 /// A receipt attesting to a claim using the RISC Zero proof system.

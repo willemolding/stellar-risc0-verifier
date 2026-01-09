@@ -60,11 +60,9 @@ fn setup_env() -> (Env, Address, RiscZeroVerifierRouterClient<'static>) {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register(RiscZeroVerifierRouter, ());
-    let client = RiscZeroVerifierRouterClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-
-    client.init(&admin);
+    let contract_id = env.register(RiscZeroVerifierRouter, (admin.clone(),));
+    let client = RiscZeroVerifierRouterClient::new(&env, &contract_id);
 
     (env, admin, client)
 }
@@ -94,36 +92,15 @@ fn unwrap_verifier_error<T: core::fmt::Debug>(
 }
 
 // =============================================================================
-// Initialization Tests
+// Constructor Tests
 // =============================================================================
 
 #[test]
-fn test_init_requires_auth() {
+#[should_panic]
+fn test_constructor_requires_auth() {
     let env = Env::default();
-    let contract_id = env.register(RiscZeroVerifierRouter, ());
-    let client = RiscZeroVerifierRouterClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-
-    // Without auth, init should trap due to admin.require_auth().
-    let result = client.try_init(&admin);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_init_only_once() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register(RiscZeroVerifierRouter, ());
-    let client = RiscZeroVerifierRouterClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-
-    client.init(&admin);
-    let result = client.try_init(&admin);
-    assert_eq!(
-        unwrap_verifier_error(result),
-        VerifierError::AlreadyInitialized
-    );
+    env.register(RiscZeroVerifierRouter, (admin,));
 }
 
 // =============================================================================
@@ -343,15 +320,12 @@ fn test_verify_panics_on_unknown_selector() {
 #[should_panic]
 fn test_add_verifier_requires_admin_auth() {
     let env = Env::default();
+    env.mock_all_auths();
 
-    let contract_id = env.register(RiscZeroVerifierRouter, ());
-    let client = RiscZeroVerifierRouterClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-
-    // Seed admin without auth to check that add_verifier enforces require_auth().
-    env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&DataKey::Admin, &admin);
-    });
+    let contract_id = env.register(RiscZeroVerifierRouter, (admin.clone(),));
+    let client = RiscZeroVerifierRouterClient::new(&env, &contract_id);
+    env.set_auths(&[]);
 
     let selector = create_selector(&env, [0x01, 0x02, 0x03, 0x04]);
     let verifier = Address::generate(&env);

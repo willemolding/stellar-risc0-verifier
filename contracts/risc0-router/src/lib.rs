@@ -1,9 +1,9 @@
 #![no_std]
-use soroban_sdk::{
-    Address, Bytes, BytesN, Env, contract, contracterror, contractimpl, contracttype,
-};
 
-use risc0_interface::{Receipt, ReceiptClaim, RiscZeroVerifierClient, RiscZeroVerifierInterface};
+use risc0_interface::{
+    Receipt, ReceiptClaim, RiscZeroVerifierClient, RiscZeroVerifierInterface, VerifierError,
+};
+use soroban_sdk::{Address, Bytes, BytesN, Env, contract, contractimpl, contracttype};
 
 #[cfg(test)]
 mod test;
@@ -22,17 +22,6 @@ enum VerifierEntry {
     Tombstone,
 }
 
-// FIXME: Remove when PR#11 is merged
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum VerifierError {
-    AlreadyInitialized = 4,
-    SelectorRemoved = 5,
-    SelectorInUse = 6,
-    SelectorUnknown = 7,
-}
-
 #[contract]
 pub struct RiscZeroVerifierRouter;
 
@@ -47,19 +36,9 @@ pub struct RiscZeroVerifierRouter;
 // <https://developers.stellar.org/docs/build/smart-contracts/overview>.
 #[contractimpl]
 impl RiscZeroVerifierRouter {
-    fn is_initialized(env: &Env) -> bool {
-        env.storage().persistent().has(&DataKey::Admin)
-    }
-
-    pub fn init(env: Env, admin: Address) -> Result<(), VerifierError> {
-        if Self::is_initialized(&env) {
-            return Err(VerifierError::AlreadyInitialized);
-        }
-
+    pub fn __constructor(env: Env, admin: Address) {
         admin.require_auth();
         env.storage().persistent().set(&DataKey::Admin, &admin);
-
-        Ok(())
     }
 
     pub fn add_verifier(
