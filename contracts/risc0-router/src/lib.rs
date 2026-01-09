@@ -48,30 +48,26 @@ impl RiscZeroVerifierRouter {
     ) -> Result<(), VerifierError> {
         require_admin(&env);
 
-        let verifier_address: Option<VerifierEntry> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Verifier(selector.clone()));
+        let key = DataKey::Verifier(selector);
+        let verifier_address: Option<VerifierEntry> = env.storage().persistent().get(&key);
 
-        match verifier_address {
-            Some(VerifierEntry::Tombstone) => return Err(VerifierError::SelectorRemoved),
-            Some(VerifierEntry::Active(_)) => return Err(VerifierError::SelectorInUse),
-            None => (),
+        if let Some(entry) = verifier_address {
+            match entry {
+                VerifierEntry::Tombstone => return Err(VerifierError::SelectorRemoved),
+                VerifierEntry::Active(_) => return Err(VerifierError::SelectorInUse),
+            }
         }
 
-        env.storage().persistent().set(
-            &DataKey::Verifier(selector),
-            &VerifierEntry::Active(verifier),
-        );
+        env.storage()
+            .persistent()
+            .set(&key, &VerifierEntry::Active(verifier));
 
         Ok(())
     }
 
     fn get_verifier(env: &Env, selector: &BytesN<4>) -> Result<Address, VerifierError> {
-        let verifier_address: Option<VerifierEntry> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Verifier(selector.clone()));
+        let key = DataKey::Verifier(selector.clone());
+        let verifier_address: Option<VerifierEntry> = env.storage().persistent().get(&key);
 
         match verifier_address {
             Some(VerifierEntry::Tombstone) => Err(VerifierError::SelectorRemoved),
@@ -88,7 +84,8 @@ impl RiscZeroVerifierRouter {
     }
 
     pub fn get_verifier_from_seal(env: Env, seal: Bytes) -> Result<Address, VerifierError> {
-        Self::get_verifier(&env, &seal.slice(0..4).try_into().unwrap())
+        let selector = selector_from_seal(&seal);
+        Self::get_verifier(&env, &selector)
     }
 }
 
@@ -106,7 +103,7 @@ impl RiscZeroVerifierInterface for RiscZeroVerifierRouter {
     }
 
     fn verify_integrity(env: Env, receipt: Receipt) {
-        let selector = receipt.seal.slice(0..4).try_into().unwrap();
+        let selector = selector_from_seal(&receipt.seal);
         let verifier = Self::get_verifier(&env, &selector).unwrap();
         let verifier = RiscZeroVerifierClient::new(&env, &verifier);
         verifier.verify_integrity(&receipt);
@@ -116,4 +113,8 @@ impl RiscZeroVerifierInterface for RiscZeroVerifierRouter {
 fn require_admin(env: &Env) {
     let admin: Address = env.storage().persistent().get(&DataKey::Admin).unwrap();
     admin.require_auth();
+}
+
+fn selector_from_seal(seal: &Bytes) -> BytesN<4> {
+    seal.slice(0..4).try_into().unwrap()
 }
