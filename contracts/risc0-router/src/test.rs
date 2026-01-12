@@ -36,18 +36,24 @@ mod mock_verifier {
     impl RiscZeroVerifierInterface for MockVerifier {
         type Proof = ();
 
-        fn verify(env: Env, seal: Bytes, image_id: BytesN<32>, journal: BytesN<32>) {
+        fn verify(
+            env: Env,
+            seal: Bytes,
+            image_id: BytesN<32>,
+            journal: BytesN<32>,
+        ) -> Result<(), VerifierError> {
             let claim = ReceiptClaim::new(&env, image_id, journal);
             let receipt = Receipt {
                 seal,
                 claim_digest: claim.digest(&env),
             };
-            Self::verify_integrity(env, receipt);
+            Self::verify_integrity(env, receipt)
         }
 
-        fn verify_integrity(env: Env, receipt: Receipt) {
+        fn verify_integrity(env: Env, receipt: Receipt) -> Result<(), VerifierError> {
             env.storage().temporary().set(&"called", &true);
             env.storage().temporary().set(&"receipt", &receipt);
+            Ok(())
         }
     }
 }
