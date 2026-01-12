@@ -2,6 +2,7 @@
 
 use risc0_interface::{
     Receipt, ReceiptClaim, RiscZeroVerifierClient, RiscZeroVerifierInterface, VerifierError,
+    VerifierError,
 };
 use soroban_sdk::{Address, Bytes, BytesN, Env, contract, contractimpl, contracttype};
 use stellar_access::ownable::{Ownable, set_owner};
@@ -15,16 +16,6 @@ mod test;
 enum DataKey {
     /// Selector-specific verifier entry.
     Verifier(BytesN<4>),
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-/// Raw verifier entry state for a selector.
-pub enum VerifierEntry {
-    /// Active verifier for the selector.
-    Active(Address),
-    /// Selector is permanently removed.
-    Tombstone,
 }
 
 #[contract]
