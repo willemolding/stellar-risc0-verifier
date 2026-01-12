@@ -60,6 +60,23 @@ impl RiscZeroVerifierRouter {
         Ok(())
     }
 
+    /// Removes a verifier for the selector, marking it as permanently removed.
+    #[only_owner]
+    pub fn remove_verifier(env: Env, selector: BytesN<4>) -> Result<(), VerifierError> {
+        let key = DataKey::Verifier(selector);
+        let verifier_address: Option<VerifierEntry> = env.storage().persistent().get(&key);
+
+        if verifier_address.is_none() {
+            return Err(VerifierError::SelectorUnknown);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&key, &VerifierEntry::Tombstone);
+
+        Ok(())
+    }
+
     /// Returns the verifier for a selector.
     fn get_verifier(env: &Env, selector: &BytesN<4>) -> Result<Address, VerifierError> {
         let key = DataKey::Verifier(selector.clone());

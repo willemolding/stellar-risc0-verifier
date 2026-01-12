@@ -233,6 +233,46 @@ fn test_get_verifier_from_seal_unknown() {
 }
 
 // =============================================================================
+// Remove Verifier Tests
+// =============================================================================
+
+#[test]
+fn test_remove_verifier_marks_tombstone() {
+    let (env, _admin, client) = setup_env();
+
+    let selector = create_selector(&env, [0xAA, 0xBB, 0xCC, 0xDD]);
+    let verifier_address = Address::generate(&env);
+
+    client.add_verifier(&selector, &verifier_address);
+    client.remove_verifier(&selector);
+
+    let result = client.try_get_verifier_by_selector(&selector);
+    assert_eq!(
+        unwrap_verifier_error(result),
+        VerifierError::SelectorRemoved
+    );
+
+    let new_verifier = Address::generate(&env);
+    let result = client.try_add_verifier(&selector, &new_verifier);
+    assert_eq!(
+        unwrap_verifier_error(result),
+        VerifierError::SelectorRemoved
+    );
+}
+
+#[test]
+fn test_remove_verifier_unknown_selector() {
+    let (env, _admin, client) = setup_env();
+
+    let selector = create_selector(&env, [0xAA, 0xBB, 0xCC, 0xDD]);
+    let result = client.try_remove_verifier(&selector);
+    assert_eq!(
+        unwrap_verifier_error(result),
+        VerifierError::SelectorUnknown
+    );
+}
+
+// =============================================================================
 // Verification Routing Tests
 // =============================================================================
 
