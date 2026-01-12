@@ -18,7 +18,9 @@ enum DataKey {
 }
 
 #[contracttype]
-enum VerifierEntry {
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Raw verifier entry state for a selector.
+pub enum VerifierEntry {
     /// Active verifier for the selector.
     Active(Address),
     /// Selector is permanently removed.
@@ -95,6 +97,12 @@ impl RiscZeroVerifierRouter {
         selector: BytesN<4>,
     ) -> Result<Address, VerifierError> {
         Self::get_verifier(&env, &selector)
+    }
+
+    /// Returns the raw verifier entry for a selector (unset, active, or tombstone).
+    pub fn verifiers(env: Env, selector: BytesN<4>) -> Option<VerifierEntry> {
+        let key = DataKey::Verifier(selector);
+        env.storage().persistent().get(&key)
     }
 
     /// Returns the verifier for the selector stored in the seal prefix.

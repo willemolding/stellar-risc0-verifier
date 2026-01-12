@@ -239,6 +239,35 @@ fn test_get_verifier_from_seal_unknown() {
 }
 
 // =============================================================================
+// Raw Verifier Entry Tests
+// =============================================================================
+
+#[test]
+fn test_verifiers_getter_returns_raw_entry() {
+    let (env, _admin, client) = setup_env();
+
+    let selector = create_selector(&env, [0x10, 0x20, 0x30, 0x40]);
+
+    // Unset selector should return None.
+    assert_eq!(client.verifiers(&selector), None);
+
+    let verifier_address = Address::generate(&env);
+    client.add_verifier(&selector, &verifier_address);
+
+    assert_eq!(
+        client.verifiers(&selector),
+        Some(VerifierEntry::Active(verifier_address))
+    );
+
+    client.remove_verifier(&selector);
+
+    assert_eq!(
+        client.verifiers(&selector),
+        Some(VerifierEntry::Tombstone)
+    );
+}
+
+// =============================================================================
 // Remove Verifier Tests
 // =============================================================================
 
