@@ -97,7 +97,7 @@ impl RiscZeroVerifierRouterInterface for RiscZeroVerifierRouter {
 
     /// Returns the verifier for the selector stored in the seal prefix.
     fn get_verifier_from_seal(env: Env, seal: Bytes) -> Result<Address, VerifierError> {
-        let selector = selector_from_seal(&seal);
+        let selector = selector_from_seal(&seal)?;
         Self::get_verifier(&env, &selector)
     }
 
@@ -108,7 +108,7 @@ impl RiscZeroVerifierRouterInterface for RiscZeroVerifierRouter {
         image_id: BytesN<32>,
         journal: BytesN<32>,
     ) -> Result<(), VerifierError> {
-        let selector = selector_from_seal(&seal);
+        let selector = selector_from_seal(&seal)?;
         let verifier = Self::get_verifier(&env, &selector)?;
         let verifier = RiscZeroVerifierClient::new(&env, &verifier);
         verifier.verify(&seal, &image_id, &journal);
@@ -117,7 +117,7 @@ impl RiscZeroVerifierRouterInterface for RiscZeroVerifierRouter {
 
     /// Verifies receipt integrity using the selector's verifier.
     fn verify_integrity(env: Env, receipt: Receipt) -> Result<(), VerifierError> {
-        let selector = selector_from_seal(&receipt.seal);
+        let selector = selector_from_seal(&receipt.seal)?;
         let verifier = Self::get_verifier(&env, &selector)?;
         let verifier = RiscZeroVerifierClient::new(&env, &verifier);
         verifier.verify_integrity(&receipt);
@@ -126,8 +126,11 @@ impl RiscZeroVerifierRouterInterface for RiscZeroVerifierRouter {
 }
 
 /// Extracts the 4-byte selector from the seal prefix.
-fn selector_from_seal(seal: &Bytes) -> BytesN<4> {
-    seal.slice(0..4).try_into().unwrap()
+fn selector_from_seal(seal: &Bytes) -> Result<BytesN<4>, VerifierError> {
+    if seal.len() < 4 {
+        return Err(VerifierError::MalformedSeal);
+    }
+    Ok(seal.slice(0..4).try_into().unwrap())
 }
 
 #[contractimpl(contracttrait)]
