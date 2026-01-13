@@ -84,6 +84,26 @@ fn create_seal_with_selector(env: &Env, selector: &BytesN<4>) -> Bytes {
     Bytes::from_slice(env, &seal_bytes)
 }
 
+fn create_short_seal(env: &Env) -> Bytes {
+    Bytes::from_slice(env, &[0u8; 3])
+}
+
+fn setup_two_verifiers(
+    env: &Env,
+    client: &RiscZeroVerifierRouterClient<'static>,
+) -> (BytesN<4>, BytesN<4>, Address, Address) {
+    let verifier_a = env.register(mock_verifier::MockVerifier, ());
+    let verifier_b = env.register(mock_verifier::MockVerifier, ());
+
+    let selector_a = create_selector(env, [0x01, 0x02, 0x03, 0x04]);
+    let selector_b = create_selector(env, [0x10, 0x20, 0x30, 0x40]);
+
+    client.add_verifier(&selector_a, &verifier_a);
+    client.add_verifier(&selector_b, &verifier_b);
+
+    (selector_a, selector_b, verifier_a, verifier_b)
+}
+
 /// Helper to extract VerifierError from the nested Result type
 fn unwrap_verifier_error<T: core::fmt::Debug>(
     result: Result<
@@ -238,6 +258,18 @@ fn test_get_verifier_from_seal_unknown() {
     );
 }
 
+#[test]
+fn test_get_verifier_from_seal_malformed_seal() {
+    let (env, _admin, client) = setup_env();
+    let seal = create_short_seal(&env);
+
+    let result = client.try_get_verifier_from_seal(&seal);
+    assert_eq!(
+        unwrap_verifier_error(result),
+        VerifierError::MalformedSeal
+    );
+}
+
 // =============================================================================
 // Raw Verifier Entry Tests
 // =============================================================================
@@ -307,6 +339,61 @@ fn test_remove_verifier_unknown_selector() {
     );
 }
 
+#[test]
+fn test_removed_selector_blocks_verify() {
+    let (env, _admin, client) = setup_env();
+
+    let (selector_a, selector_b, verifier_a, verifier_b) = setup_two_verifiers(&env, &client);
+    let mock_a = mock_verifier::MockVerifierClient::new(&env, &verifier_a);
+    let mock_b = mock_verifier::MockVerifierClient::new(&env, &verifier_b);
+    client.remove_verifier(&selector_b);
+
+    let seal_a = create_seal_with_selector(&env, &selector_a);
+    let seal_b = create_seal_with_selector(&env, &selector_b);
+    let image_id = BytesN::from_array(&env, &[0u8; 32]);
+    let journal_digest = BytesN::from_array(&env, &[1u8; 32]);
+
+    client.verify(&seal_a, &image_id, &journal_digest);
+    assert!(mock_a.was_called());
+    assert!(!mock_b.was_called());
+
+    let result = client.try_verify(&seal_b, &image_id, &journal_digest);
+    assert_eq!(
+        unwrap_verifier_error(result),
+        VerifierError::SelectorRemoved
+    );
+    assert!(!mock_b.was_called());
+}
+
+#[test]
+fn test_removed_selector_blocks_verify_integrity() {
+    let (env, _admin, client) = setup_env();
+
+    let (selector_a, selector_b, verifier_a, verifier_b) = setup_two_verifiers(&env, &client);
+    let mock_a = mock_verifier::MockVerifierClient::new(&env, &verifier_a);
+    let mock_b = mock_verifier::MockVerifierClient::new(&env, &verifier_b);
+    client.remove_verifier(&selector_b);
+
+    let receipt_a = Receipt {
+        seal: create_seal_with_selector(&env, &selector_a),
+        claim_digest: BytesN::from_array(&env, &[0u8; 32]),
+    };
+    client.verify_integrity(&receipt_a);
+    assert!(mock_a.was_called());
+    assert!(!mock_b.was_called());
+
+    let receipt_b = Receipt {
+        seal: create_seal_with_selector(&env, &selector_b),
+        claim_digest: BytesN::from_array(&env, &[0u8; 32]),
+    };
+    let result = client.try_verify_integrity(&receipt_b);
+    assert_eq!(
+        unwrap_verifier_error(result),
+        VerifierError::SelectorRemoved
+    );
+    assert!(!mock_b.was_called());
+}
+
 // =============================================================================
 // Verification Routing Tests
 // =============================================================================
@@ -336,6 +423,31 @@ fn test_verify_routes_to_correct_verifier() {
 
     // Check that the mock verifier was called
     assert!(mock_client.was_called());
+}
+
+#[test]
+fn test_verify_routes_to_multiple_verifiers() {
+    let (env, _admin, client) = setup_env();
+
+    let (selector_a, selector_b, verifier_a, verifier_b) = setup_two_verifiers(&env, &client);
+    let mock_a = mock_verifier::MockVerifierClient::new(&env, &verifier_a);
+    let mock_b = mock_verifier::MockVerifierClient::new(&env, &verifier_b);
+
+    let image_id = BytesN::from_array(&env, &[0u8; 32]);
+    let journal_digest = BytesN::from_array(&env, &[1u8; 32]);
+
+    let seal_a = create_seal_with_selector(&env, &selector_a);
+    client.verify(&seal_a, &image_id, &journal_digest);
+
+    assert!(mock_a.was_called());
+    assert!(!mock_b.was_called());
+    assert_eq!(mock_a.get_verified_receipt().unwrap().seal, seal_a);
+
+    let seal_b = create_seal_with_selector(&env, &selector_b);
+    client.verify(&seal_b, &image_id, &journal_digest);
+
+    assert!(mock_b.was_called());
+    assert_eq!(mock_b.get_verified_receipt().unwrap().seal, seal_b);
 }
 
 #[test]
@@ -372,6 +484,42 @@ fn test_verify_integrity_routes_to_correct_verifier() {
 }
 
 #[test]
+fn test_verify_integrity_routes_to_multiple_verifiers() {
+    let (env, _admin, client) = setup_env();
+
+    let (selector_a, selector_b, verifier_a, verifier_b) = setup_two_verifiers(&env, &client);
+    let mock_a = mock_verifier::MockVerifierClient::new(&env, &verifier_a);
+    let mock_b = mock_verifier::MockVerifierClient::new(&env, &verifier_b);
+
+    let claim_digest = BytesN::from_array(&env, &[0u8; 32]);
+
+    let receipt_a = Receipt {
+        seal: create_seal_with_selector(&env, &selector_a),
+        claim_digest: claim_digest.clone(),
+    };
+    client.verify_integrity(&receipt_a);
+
+    assert!(mock_a.was_called());
+    assert!(!mock_b.was_called());
+    assert_eq!(
+        mock_a.get_verified_receipt().unwrap().seal,
+        receipt_a.seal
+    );
+
+    let receipt_b = Receipt {
+        seal: create_seal_with_selector(&env, &selector_b),
+        claim_digest,
+    };
+    client.verify_integrity(&receipt_b);
+
+    assert!(mock_b.was_called());
+    assert_eq!(
+        mock_b.get_verified_receipt().unwrap().seal,
+        receipt_b.seal
+    );
+}
+
+#[test]
 #[should_panic]
 fn test_verify_panics_on_unknown_selector() {
     let (env, _admin, client) = setup_env();
@@ -386,6 +534,38 @@ fn test_verify_panics_on_unknown_selector() {
         &client.address,
         &symbol_short!("verify"),
         (seal, image_id, journal_digest).into_val(&env),
+    );
+}
+
+#[test]
+fn test_verify_malformed_seal() {
+    let (env, _admin, client) = setup_env();
+
+    let seal = create_short_seal(&env);
+    let image_id = BytesN::from_array(&env, &[0u8; 32]);
+    let journal_digest = BytesN::from_array(&env, &[1u8; 32]);
+
+    let result = client.try_verify(&seal, &image_id, &journal_digest);
+    assert_eq!(
+        unwrap_verifier_error(result),
+        VerifierError::MalformedSeal
+    );
+}
+
+#[test]
+fn test_verify_integrity_malformed_seal() {
+    let (env, _admin, client) = setup_env();
+
+    let seal = create_short_seal(&env);
+    let receipt = Receipt {
+        seal,
+        claim_digest: BytesN::from_array(&env, &[0u8; 32]),
+    };
+
+    let result = client.try_verify_integrity(&receipt);
+    assert_eq!(
+        unwrap_verifier_error(result),
+        VerifierError::MalformedSeal
     );
 }
 
@@ -409,4 +589,29 @@ fn test_add_verifier_requires_admin_auth() {
 
     // Should trap on admin.require_auth().
     client.add_verifier(&selector, &verifier);
+}
+
+#[test]
+#[should_panic]
+fn test_remove_verifier_requires_admin_auth() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let contract_id = env.register(RiscZeroVerifierRouter, (admin.clone(),));
+    let client = RiscZeroVerifierRouterClient::new(&env, &contract_id);
+    env.set_auths(&[]);
+
+    let selector = create_selector(&env, [0x01, 0x02, 0x03, 0x04]);
+    let verifier = Address::generate(&env);
+
+    env.as_contract(&client.address, || {
+        env.storage().persistent().set(
+            &DataKey::Verifier(selector.clone()),
+            &VerifierEntry::Active(verifier),
+        );
+    });
+
+    // Should trap on admin.require_auth().
+    client.remove_verifier(&selector);
 }
