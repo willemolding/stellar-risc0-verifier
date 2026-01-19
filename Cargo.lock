@@ -1469,6 +1469,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "stellar-access"
+version = "0.6.0"
+source = "git+https://github.com/OpenZeppelin/stellar-contracts?tag=v0.6.0#82f97111f9568d32653dd5b3563baf5b73509c89"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
+name = "stellar-governance"
+version = "0.6.0"
+source = "git+https://github.com/OpenZeppelin/stellar-contracts?tag=v0.6.0#82f97111f9568d32653dd5b3563baf5b73509c89"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
+name = "stellar-macros"
+version = "0.6.0"
+source = "git+https://github.com/OpenZeppelin/stellar-contracts?tag=v0.6.0#82f97111f9568d32653dd5b3563baf5b73509c89"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
+]
+
+[[package]]
 name = "stellar-strkey"
 version = "0.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1580,6 +1606,17 @@ checksum = "30cfb0125f12d9c277f35663a0a33f8c30190f4e4574868a330595412d34ebf3"
 dependencies = [
  "num-conv",
  "time-core",
+]
+
+[[package]]
+name = "timelock"
+version = "0.0.0"
+dependencies = [
+ "risc0-interface",
+ "soroban-sdk",
+ "stellar-access",
+ "stellar-governance",
+ "stellar-macros",
 ]
 
 [[package]]
